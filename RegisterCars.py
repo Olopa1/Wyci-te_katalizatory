@@ -3,6 +3,17 @@ import numpy as np
 import torch
 import sqlite3  # Użycie SQLite jako przykładowej bazy danych
 from skimage.metrics import structural_similarity as ssim
+import socket
+
+def recive_license_plate():
+    ip = '127.0.0.1'
+    port = 33333
+    s = socket.socket()
+    s.connect((ip,port))
+    s.send("send".encode())
+    plate = s.recv(1024).decode()
+    s.close()
+    return plate
 
 # Funkcja do obliczania IoU (Intersection over Union)
 def compute_iou(box1, box2):
