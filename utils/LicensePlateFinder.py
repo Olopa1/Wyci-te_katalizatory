@@ -7,8 +7,47 @@ import numpy as np
 from skimage.color import rgb2gray
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+import socket
+
+from skimage.filters import farid
 
 
+class LicensePlateClient:
+    def __init__(self,ip,port):
+        self.port = port
+        self.ip = ip
+        self.s = socket.socket()
+        tries = 0
+        while True:
+            try:
+                self.s.connect((ip,port))
+                self.s.send("FindPlate".encode())
+                data = self.s.recv(1024).decode()
+                if data.lower() == 'welcome':
+                    break
+            except:
+                if tries > 5:
+                    raise Exception(f"Cannot connect to {ip}:{port}")
+                else:
+                    tries += 1
+                    continue
+            break
+
+    def close_connection(self):
+        self.s.close()
+
+    def send_license_plate(self,plate) -> bool:
+        self.s.send("found".encode())
+        data = self.s.recv(1024).decode()
+        if data.lower() == 'ok':
+            self.s.send(plate.encode())
+            return True
+        else:
+            return False
+
+
+def open_gate():
+    pass
 
 def find_license_plate(img) -> dict:
     gray_image = rgb2gray(img)
