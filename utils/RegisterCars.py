@@ -9,7 +9,7 @@ from torch.sparse import addmm
 
 
 class LabelingClient:
-    def __init__(self,ip,port):
+    def __init__(self, ip, port):
         self.port = port
         self.ip = ip
         self.s = socket.socket()
@@ -17,37 +17,52 @@ class LabelingClient:
         tries = 0
         while True:
             try:
-                self.s.connect((ip,port))
+                self.s.connect((ip, port))
                 self.s.send('LabelCar'.encode())
                 data = self.s.recv(1024).decode()
                 if data.lower() == 'welcome':
                     print("Label car client started...")
                     break
-            except:
+            except ConnectionRefusedError:
+                print(f"Connection refused by {ip}:{port}. Retrying...")
+            except socket.timeout:
+                print("Connection timed out. Retrying...")
+            except OSError as e:
+                print(f"Socket error: {e}")
+            finally:
+                tries += 1
                 if tries > 5:
-                    raise Exception(f"Cannot connect to {ip}:{port}")
-                else:
-                    tries += 1
-                    continue
-
+                    raise Exception(f"Cannot connect to {ip}:{port} after 5 attempts")
 
     def get_license_plate(self) -> str:
         return self.license_plate
 
     def close_connection(self):
-        self.s.close()
+        try:
+            self.s.close()
+        except OSError as e:
+            print(f"Error closing connection: {e}")
 
     def receive_license_plate(self) -> bool:
-        print("waiting for data...")
-        data = self.s.recv(1024).decode()
-        if data.lower() == 'found':
-            print(f"data found: {data}")
-            self.s.send('give'.encode())
+        try:
+            print("Waiting for data...")
             data = self.s.recv(1024).decode()
-            if data.lower() != 'wrong command given':
-                return True
-            else:
-                return False
+            if data.lower() == 'found':
+                print(f"Data found: {data}")
+                self.s.send('give'.encode())
+                data = self.s.recv(1024).decode()
+                if data.lower() != 'wrong command given':
+                    self.license_plate = data
+                    return True
+                else:
+                    print("Wrong command received from server.")
+                    return False
+        except ConnectionResetError:
+            print("Connection reset by server.")
+        except socket.timeout:
+            print("Timeout while waiting for data.")
+        except OSError as e:
+            print(f"Socket error while receiving data: {e}")
         return False
 
 # Funkcja do obliczania IoU (Intersection over Union)

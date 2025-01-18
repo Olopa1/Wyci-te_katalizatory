@@ -19,12 +19,13 @@ def main():
     tries = 0
     lc = LabelingClient('127.0.0.1', 33333)
     #print("ok")
-    while len(recived) < len(expected_plates) or tries >= 20:
+    while len(recived) != len(expected_plates) or tries < 20:
         try:
             if lc.receive_license_plate():
                 plate = lc.get_license_plate()
                 recived.add(plate)
                 print(plate)
+                print(f"Found {len(recived)} out of {len(expected_plates)}")
                 tries += 1
         except:
             break

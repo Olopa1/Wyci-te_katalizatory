@@ -13,37 +13,52 @@ from skimage.filters import farid
 
 
 class LicensePlateClient:
-    def __init__(self,ip,port):
+    def __init__(self, ip, port):
         self.port = port
         self.ip = ip
         self.s = socket.socket()
         tries = 0
         while True:
             try:
-                self.s.connect((ip,port))
+                self.s.connect((ip, port))
                 self.s.send("FindPlate".encode())
                 data = self.s.recv(1024).decode()
                 if data.lower() == 'welcome':
                     break
-            except:
+            except ConnectionRefusedError:
+                print(f"Connection refused by {ip}:{port}. Retrying...")
+            except socket.timeout:
+                print("Connection timed out. Retrying...")
+            except OSError as e:
+                print(f"Socket error: {e}")
+            finally:
+                tries += 1
                 if tries > 5:
-                    raise Exception(f"Cannot connect to {ip}:{port}")
-                else:
-                    tries += 1
-                    continue
-            break
+                    raise Exception(f"Cannot connect to {ip}:{port} after 5 attempts")
 
     def close_connection(self):
-        self.s.close()
+        try:
+            self.s.close()
+        except OSError as e:
+            print(f"Error closing connection: {e}")
 
-    def send_license_plate(self,plate) -> bool:
-        self.s.send("found".encode())
-        data = self.s.recv(1024).decode()
-        if data.lower() == 'ok':
-            self.s.send(plate.encode())
-            return True
-        else:
-            return False
+    def send_license_plate(self, plate) -> bool:
+        try:
+            self.s.send("found".encode())
+            data = self.s.recv(1024).decode()
+            if data.lower() == 'ok':
+                self.s.send(plate.encode())
+                return True
+            else:
+                print("Server responded with an error.")
+                return False
+        except ConnectionResetError:
+            print("Connection reset by server while sending license plate.")
+        except socket.timeout:
+            print("Timeout while sending license plate.")
+        except OSError as e:
+            print(f"Socket error while sending license plate: {e}")
+        return False
 
 
 def open_gate():
