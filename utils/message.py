@@ -4,23 +4,8 @@ import torch
 import socket
 import mysql.connector
 
-
-# Funkcja do obliczania IoU (Intersection over Union)
-def compute_iou(box1, box2):
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-
-    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
-    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
-
-    iou = inter_area / (box1_area + box2_area - inter_area)
-    return iou
-
 class LabelingClient:
-    def __init__(self, ip, port, db_conf):
+    def __init__(self, ip, port):
         self.port = port
         self.ip = ip
         self.s = socket.socket()
@@ -75,6 +60,22 @@ class LabelingClient:
         except OSError as e:
             print(f"Socket error while receiving data: {e}")
         return False
+
+
+# Funkcja do obliczania IoU (Intersection over Union)
+def compute_iou(box1, box2):
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+
+    iou = inter_area / (box1_area + box2_area - inter_area)
+    return iou
+
 
 # Klasa do śledzenia obiektów z poprawką
 # Klasa do śledzenia obiektów
@@ -259,6 +260,8 @@ def process_video(video_source):
 
     tracker = Tracker()
 
+    register_car = LabelingClient("127.0.0.1",33333)
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -311,6 +314,8 @@ def process_video(video_source):
 
         tracked_objects = tracker.update(detections)
 
+
+
         # Wyświetlenie komórek siatki
         for idx, (cell, (x1, y1, x2, y2), is_road) in enumerate(grid_cells):
             row, col = divmod(idx, cols)
@@ -339,10 +344,16 @@ def process_video(video_source):
             color = (0, 255, 0) if parking_status['parked_correctly'] else (0, 0, 255)
             status = "Poprawnie" if parking_status['parked_correctly'] else "Niepoprawnie"
 
-            #Tabica rejestracyjna z komunikacji
+            # Pobranie tablicy rejestracyjnej z LabelingClient
+            license_plate = register_car.get_license_plate() if 'register_car' in locals() else "Brak danych"
+
             x1, y1, x2, y2 = bbox
             cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 10),
+
+            # Wyświetlanie statusu i tablicy rejestracyjnej
+            cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
         # Sprawdzanie czasu postoju i wysyłanie komunikatów
