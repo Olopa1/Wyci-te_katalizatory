@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sty 20, 2025 at 02:32 PM
+-- Generation Time: Sty 23, 2025 at 03:59 PM
 -- Wersja serwera: 10.4.32-MariaDB
 -- Wersja PHP: 8.0.30
 
@@ -49,24 +49,15 @@ INSERT INTO `cars` (`car_id`, `register_plate`, `last_x_position`, `last_y_posit
 -- --------------------------------------------------------
 
 --
--- Struktura tabeli dla tabeli `reserved_spots`
+-- Struktura tabeli dla tabeli `cars_logs`
 --
 
-CREATE TABLE `reserved_spots` (
-  `spot_id` int(11) NOT NULL,
+CREATE TABLE `cars_logs` (
+  `log_id` int(11) NOT NULL,
   `car_id` int(11) NOT NULL,
-  `spot_number` int(11) NOT NULL
+  `action_type` varchar(30) NOT NULL,
+  `time` datetime NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `reserved_spots`
---
-
-INSERT INTO `reserved_spots` (`spot_id`, `car_id`, `spot_number`) VALUES
-(2, 1, 2),
-(3, 2, 4),
-(4, 3, 6),
-(5, 4, 8);
 
 --
 -- Indeksy dla zrzutów tabel
@@ -80,11 +71,11 @@ ALTER TABLE `cars`
   ADD UNIQUE KEY `car_id` (`car_id`);
 
 --
--- Indeksy dla tabeli `reserved_spots`
+-- Indeksy dla tabeli `cars_logs`
 --
-ALTER TABLE `reserved_spots`
-  ADD UNIQUE KEY `spot_id` (`spot_id`),
-  ADD KEY `Reserved_spots_fk1` (`car_id`);
+ALTER TABLE `cars_logs`
+  ADD PRIMARY KEY (`log_id`),
+  ADD KEY `foreign_key` (`car_id`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -97,20 +88,10 @@ ALTER TABLE `cars`
   MODIFY `car_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
--- AUTO_INCREMENT for table `reserved_spots`
+-- AUTO_INCREMENT for table `cars_logs`
 --
-ALTER TABLE `reserved_spots`
-  MODIFY `spot_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
-
---
--- Constraints for dumped tables
---
-
---
--- Constraints for table `reserved_spots`
---
-ALTER TABLE `reserved_spots`
-  ADD CONSTRAINT `Reserved_spots_fk1` FOREIGN KEY (`car_id`) REFERENCES `cars` (`car_id`);
+ALTER TABLE `cars_logs`
+  MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
