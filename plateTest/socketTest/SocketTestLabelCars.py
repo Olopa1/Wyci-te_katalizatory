@@ -19,7 +19,7 @@ def main():
     tries = 0
     lc = LabelingClient('127.0.0.1', 33333)
     #print("ok")
-    while len(recived) != len(expected_plates) or tries < 20:
+    while True:
         try:
             if lc.receive_license_plate():
                 plate = lc.get_license_plate()
@@ -31,7 +31,7 @@ def main():
             break
     sleep(120)
     lc.close_connection()
-    print(f"Program enden with {tries} tries")
+    print(f"Program ended with {tries} tries")
 
 
 main()

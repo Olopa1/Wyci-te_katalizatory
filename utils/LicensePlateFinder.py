@@ -8,6 +8,8 @@ from skimage.color import rgb2gray
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import socket
+import time
+
 
 from skimage.filters import farid
 
@@ -93,6 +95,43 @@ def find_license_plate(img) -> dict:
             potential_plates[text_reg.upper()] = license_plate
     return potential_plates
 
+def find_license_plate_test(img)->dict:
+    gray_image = rgb2gray(img)
+    if gray_image.dtype != np.uint8:
+        gray_image = (gray_image * 255).astype(np.uint8)
+
+    # 1. Użycie progowania zamiast rozmycia i wykrywania krawędzi
+    _, binary_image = cv2.threshold(gray_image, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # 2. Znajdowanie konturów
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    potential_plates = {}
+    pt.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+    for contour in contours:
+        # Obliczenie prostokąta ograniczającego dla każdego konturu
+        x, y, w, h = cv2.boundingRect(contour)
+        aspect_ratio = w / float(h)
+
+        # Warunki wstępne dla tablic rejestracyjnych
+        if 2 < aspect_ratio < 6 and 150 < w * h:  # Dostosuj te wartości w razie potrzeby
+            # Wycięcie potencjalnego obszaru tablicy
+            license_plate = gray_image[y:y + h, x:x + w]
+
+            # Możliwe dalsze przekształcenia (np. rozmiar i normalizacja)
+            license_plate = cv2.resize(license_plate, (400, 100))
+
+            # OCR na wyciętej tablicy (tylko gdy wstępne warunki są spełnione)
+            text_reg = pt.image_to_string(license_plate, config='--psm 8')  # Tryb dla pojedynczej linii
+            text_reg = re.sub(r'[^a-zA-Z0-9]', '', text_reg)
+            if text_reg:  # Tylko jeśli wykryty tekst nie jest pusty
+                potential_plates[text_reg.upper()] = license_plate
+
+    return potential_plates
+
+
+
 def find_plate(plate_name,found_plates):
     if plate_name in found_plates.keys():
         return found_plates[plate_name],plate_name
@@ -113,16 +152,28 @@ def show_plate(original,plate,text):
 #testing = {"WE2U656":image1,"DW2DK01":image2,"CWL17991":image3}
 #potential_plates = find_license_plate(image1)
 
-#potenial_plates1 = find_license_plate(image1)
+#start = time.time_ns()
+#potenial_plates1 = find_license_plate_test(image2)
+#end = time.time_ns()
+
+#find1time = (end - start)/1000000000
+
+#start = time.time_ns()
 #potenial_plates2 = find_license_plate(image2)
-#potenial_plates3 = find_license_plate(image3)
+#end = time.time_ns()
+
+#find2time = (end - start)/1000000000
+
+#print(f"First run time: {find1time} Second run time: {find2time}")
+
+#potenial_plates3 = find_license_plate_test(image3)
 
 #paltes_key = ["WE2U656","DW2DK01","CWL17991"]
 
-#found_plate1 = find_plate(paltes_key[0],potenial_plates1)
+#found_plate1 = find_plate(paltes_key[1],potenial_plates1)
 #found_plate2 = find_plate(paltes_key[1],potenial_plates2)
 #found_plate3 = find_plate(paltes_key[2],potenial_plates3)
 
-#show_plate(image1,found_plate1,paltes_key[0])
-#show_plate(image2,found_plate2,paltes_key[1])
-#show_plate(image3,found_plate3,paltes_key[2])
+#show_plate(image1,found_plate1[0],paltes_key[0])
+#show_plate(image2,found_plate2[0],paltes_key[1])
+#show_plate(image3,found_plate3[0],paltes_key[2])

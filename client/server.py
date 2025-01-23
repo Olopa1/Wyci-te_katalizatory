@@ -1,25 +1,57 @@
 import socket
-import numpy as np
-import skimage.exposure
-from skimage import io
-from skimage.morphology import disk
-from skimage import img_as_ubyte
-import cv2
+import mysql.connector
 
 class LicenseScanning:
 
-    def __init__(self, ip, port):
+    def __init__(self, ip, port,db_info):
+        self.db_info = db_info
         self.ip = ip
         self.port = port
         self.lastLicensePlateFound = ''
         self.connectedDevices = {'FindPlate': None, 'LabelCar': None}
         self.s = socket.socket()
+        self.db_conn = mysql.connector.connect(
+            host=self.db_info[0],
+            user=self.db_info[1],
+            password=self.db_info[2],
+            database=self.db_info[3]
+        )
+        self.on_parking = self.get_plates_to_find("1")
+        self.off_parking = self.get_plates_to_find("0")
         try:
             self.s.bind((self.ip, self.port))
             print("Socket bound successfully")
         except OSError as e:
             print(f"Error binding socket: {e}")
             raise
+
+    def check_connection(self):
+        if self.db_conn.is_connected() is False:
+            self.db_conn.reconnect()
+
+    def make_querry(self,querry) ->list:
+        self.check_connection()
+        coursor = self.db_conn.cursor()
+        coursor.execute(querry)
+        results = coursor.fetchall()
+        return results
+
+    def get_plates_to_find(self,type) -> list:
+        result = self.make_querry("SELECT register_plate FROM cars WHERE is_on_parking =" + type)
+        plates = []
+        for i in result:
+            plates.append(i[0])
+        return plates
+
+    def update_plates(self,plate):
+        params = [1,plate]
+        self.insert_data("UPDATE cars SET is_on_parking = %s WHERE register_plate = %s",params)
+        self.db_conn.commit()
+
+    def insert_data(self,querry,params):
+        self.check_connection()
+        coursor = self.db_conn.cursor()
+        coursor.execute(querry,params)
 
     def get_current_license_plate(self) -> str:
         return self.lastLicensePlateFound
@@ -104,7 +136,8 @@ class LicenseScanning:
             try:
                 if self.waiting_for_plate() is True:
                     current_plate = self.get_current_license_plate()
-                    print(f"Found plate: {current_plate}")
+                    print(f"Car with plate: {current_plate} entering the parking")
+                    print(f"Cars on parking: {self.on_parking}")
                     self.send_license_plate()
                 else:
                     print("Something went wrong. Server continues...")
