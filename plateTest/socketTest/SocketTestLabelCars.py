@@ -1,20 +1,45 @@
 from time import sleep
-
 from utils.RegisterCars import LabelingClient
+import mysql.connector
+class DbActions:
+    def __init__(self,db_conf):
+        self.db_info = db_conf
+        self.db_conn = mysql.connector.connect(
+            host=self.db_info[0],
+            user=self.db_info[1],
+            password=self.db_info[2],
+            database=self.db_info[3]
+        )
+
+    def check_connection(self):
+        if self.db_conn.is_connected() is False:
+            self.db_conn.reconnect()
+
+    def make_querry(self,querry) ->list:
+        self.check_connection()
+        coursor = self.db_conn.cursor()
+        coursor.execute(querry)
+        results = coursor.fetchall()
+        return results
+
+    def get_plates_to_find(self,type) -> list:
+        result = self.make_querry("SELECT register_plate FROM cars WHERE is_on_parking =" + type)
+        plates = []
+        for i in result:
+            plates.append(i[0])
+        return plates
+
+    def update_plates(self,plate):
+        params = [1,plate]
+        self.insert_data("UPDATE cars SET is_on_parking = %s WHERE register_plate = %s",params)
+        self.db_conn.commit()
+
+    def insert_data(self,querry,params):
+        self.check_connection()
+        coursor = self.db_conn.cursor()
+        coursor.execute(querry,params)
 
 def main():
-    expected_plates = [
-    "WE12345",  # Warszawa
-    "KR9876A",  # Kraków
-    "GD54321",  # Gdańsk
-    "PO45678",  # Poznań
-    "LU3210B",  # Lublin
-    "WR5678C",  # Wrocław
-    "SZ78901",  # Szczecin
-    "SK43210",  # Katowice
-    "BI87654",  # Białystok
-    "EL65432"   # Łódź
-    ]
     recived = set()
     tries = 0
     lc = LabelingClient('127.0.0.1', 33333)

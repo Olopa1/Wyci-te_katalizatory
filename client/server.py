@@ -139,6 +139,8 @@ class LicenseScanning:
                     print(f"Car with plate: {current_plate} entering the parking")
                     print(f"Cars on parking: {self.on_parking}")
                     self.send_license_plate()
+                    self.on_parking = self.get_plates_to_find("1")
+                    self.off_parking = self.get_plates_to_find("0")
                 else:
                     print("Something went wrong. Server continues...")
             except Exception as e:

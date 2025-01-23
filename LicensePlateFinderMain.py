@@ -133,5 +133,5 @@ class FindPlate:
                 cv2.destroyAllWindows()
                 break
 
-licenseFinder = FindPlate(host='localhost',user='root',password='',db_name='wyciete_katalizatory',video_souorce='./temp/tablice_rejestracyje_3.mp4')
+licenseFinder = FindPlate(host='localhost',user='root',password='',db_name='wyciete_katalizatory',video_souorce='./temp/tablice_rejestracyje_2.mp4')
 licenseFinder.look_for_plates()
