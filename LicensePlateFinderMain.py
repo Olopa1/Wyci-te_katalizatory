@@ -150,6 +150,6 @@ licenseFinder = FindPlate(
     user='root',
     password='',
     db_name='wyciete_katalizatory',
-    video_source='./temp/tablice_rejestracyje_2.mp4'
+    video_source='./temp/wjazd.mp4'
 )
 licenseFinder.look_for_plates()

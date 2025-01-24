@@ -9,6 +9,7 @@ class LabelingClient:
         self.port = port
         self.ip = ip
         self.s = socket.socket()
+        self.s.timeout(1)
         self.license_plate = ''
         tries = 0
         while True:
@@ -334,8 +335,16 @@ def process_video(video_source):
                 label = f"Cell {idx + 1}"
                 color = (255, 0, 0)  # Niebieski
 
+            # Rysowanie prostokąta i etykiety
             cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(cropped_frame, label, (x1 + 5, y1 + 20),
+
+            # Tło pod tekstem dla lepszej widoczności
+            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+            text_x = x1 + 5
+            text_y = y1 + 20
+            cv2.rectangle(cropped_frame, (text_x - 2, text_y - text_size[1] - 2),
+                          (text_x + text_size[0] + 2, text_y + 2), (0, 0, 0), -1)
+            cv2.putText(cropped_frame, label, (text_x, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
         # Rysowanie i status samochodów
@@ -345,6 +354,7 @@ def process_video(video_source):
             status = "Poprawnie" if parking_status['parked_correctly'] else "Niepoprawnie"
 
             # Pobranie tablicy rejestracyjnej z LabelingClient
+            register_car.receive_license_plate()
             license_plate = register_car.get_license_plate() if 'register_car' in locals() else "Brak danych"
 
             x1, y1, x2, y2 = bbox
@@ -369,4 +379,4 @@ def process_video(video_source):
     cv2.destroyAllWindows()
 
 
-process_video("https://192.168.0.108:8080/video")
+process_video("./temp/parking.mp4")
