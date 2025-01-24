@@ -1,5 +1,5 @@
 from time import sleep
-from utils.RegisterCars import LabelingClient
+from utils.message import LabelingClient
 import mysql.connector
 class DbActions:
     def __init__(self,db_conf):
@@ -50,7 +50,7 @@ def main():
                 plate = lc.get_license_plate()
                 recived.add(plate)
                 print(plate)
-                print(f"Found {len(recived)} out of {len(expected_plates)}")
+                #print(f"Found {len(recived)} out of {len(expected_plates)}")
                 tries += 1
         except:
             break

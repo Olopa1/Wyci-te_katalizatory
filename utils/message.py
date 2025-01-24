@@ -3,15 +3,20 @@ import numpy as np
 import torch
 import socket
 import mysql.connector
+import queue
+import threading
 
 class LabelingClient:
     def __init__(self, ip, port):
         self.port = port
         self.ip = ip
         self.s = socket.socket()
-        self.s.timeout(1)
         self.license_plate = ''
+        self.running = True
+        self.lock = threading.Lock()  # Do synchronizacji dostępu do danych
+        self.listener_thread = threading.Thread(target=self._listen_to_socket)
         tries = 0
+
         while True:
             try:
                 self.s.connect((ip, port))
@@ -31,36 +36,44 @@ class LabelingClient:
                 if tries > 5:
                     raise Exception(f"Cannot connect to {ip}:{port} after 5 attempts")
 
+        # Uruchomienie wątku nasłuchującego
+        self.listener_thread.start()
+
+    def _listen_to_socket(self):
+        while self.running:
+            try:
+                print("Waiting for data...")
+                data = self.s.recv(1024).decode()
+                if data.lower() == 'found':
+                    print(f"Data found: {data}")
+                    self.s.send('give'.encode())
+                    data = self.s.recv(1024).decode()
+                    if data.lower() != 'wrong command given':
+                        with self.lock:  # Synchronizacja dostępu
+                            self.license_plate = data
+                elif not data:
+                    print("No data received, closing connection.")
+                    self.running = False
+            except ConnectionResetError:
+                print("Connection reset by server.")
+                self.running = False
+            except socket.timeout:
+                print("Timeout while waiting for data.")
+            except OSError as e:
+                print(f"Socket error while receiving data: {e}")
+                self.running = False
+
     def get_license_plate(self) -> str:
-        return self.license_plate
+        with self.lock:  # Synchronizacja dostępu
+            return self.license_plate
 
     def close_connection(self):
+        self.running = False
+        self.listener_thread.join()
         try:
             self.s.close()
         except OSError as e:
             print(f"Error closing connection: {e}")
-
-    def receive_license_plate(self) -> bool:
-        try:
-            print("Waiting for data...")
-            data = self.s.recv(1024).decode()
-            if data.lower() == 'found':
-                print(f"Data found: {data}")
-                self.s.send('give'.encode())
-                data = self.s.recv(1024).decode()
-                if data.lower() != 'wrong command given':
-                    self.license_plate = data
-                    return True
-                else:
-                    print("Wrong command received from server.")
-                    return False
-        except ConnectionResetError:
-            print("Connection reset by server.")
-        except socket.timeout:
-            print("Timeout while waiting for data.")
-        except OSError as e:
-            print(f"Socket error while receiving data: {e}")
-        return False
 
 
 # Funkcja do obliczania IoU (Intersection over Union)
@@ -354,17 +367,26 @@ def process_video(video_source):
             status = "Poprawnie" if parking_status['parked_correctly'] else "Niepoprawnie"
 
             # Pobranie tablicy rejestracyjnej z LabelingClient
-            register_car.receive_license_plate()
-            license_plate = register_car.get_license_plate() if 'register_car' in locals() else "Brak danych"
+
+            license_plate = register_car.get_license_plate()
 
             x1, y1, x2, y2 = bbox
             cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color,
+                        2)
+
+            #register_car.receive_license_plate()
+            #license_plate = register_car.get_license_plate() if 'register_car' in locals() else "Brak danych"
+
+            #x1, y1, x2, y2 = bbox
+            #cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
 
             # Wyświetlanie statusu i tablicy rejestracyjnej
-            cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            #cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20),
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            #cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5),
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
         # Sprawdzanie czasu postoju i wysyłanie komunikatów
         check_parking_time(tracker, grid_cells, rows, cols)
