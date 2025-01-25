@@ -23,7 +23,6 @@ class FindPlate:
             self.db_conn = None
 
         try:
-            # Klient tablic rejestracyjnych
             self.lpc = LicensePlateClient("127.0.0.1", 33333)
         except Exception as e:
             print(f"Nie można połączyć z serwerem tablic rejestracyjnych: {e}")
@@ -50,7 +49,7 @@ class FindPlate:
             else:
                 cursor.execute(query)
             results = cursor.fetchall()
-            print(f"Wykonano zapytanie: {query} | Parametry: {params}")
+            # print(f"Wykonano zapytanie: {query} | Parametry: {params}")
             return results
         except mysql.connector.Error as e:
             print(f"Błąd podczas wykonywania zapytania: {e}")
@@ -60,7 +59,7 @@ class FindPlate:
         query = "SELECT register_plate FROM cars WHERE is_on_parking = %s"
         results = self.make_query(query, (plate_type,))
         plates = [row[0] for row in results]
-        print(f"Pobrano tablice rejestracyjne ({plate_type}): {plates}")
+        # print(f"Pobrano tablice rejestracyjne ({plate_type}): {plates}")
         return plates
 
     def update_plates(self, plate):
@@ -69,7 +68,7 @@ class FindPlate:
         try:
             self.insert_data(query, params)
             self.db_conn.commit()
-            print(f"Zaktualizowano tablicę rejestracyjną: {plate}")
+            # print(f"Zaktualizowano tablicę rejestracyjną: {plate}")
         except mysql.connector.Error as e:
             print(f"Błąd podczas aktualizacji tablicy rejestracyjnej {plate}: {e}")
 
@@ -78,7 +77,7 @@ class FindPlate:
             self.check_connection()
             cursor = self.db_conn.cursor()
             cursor.execute(query, params)
-            print(f"Wstawiono dane: {query} | Parametry: {params}")
+            # print(f"Wstawiono dane: {query} | Parametry: {params}")
         except mysql.connector.Error as e:
             print(f"Błąd podczas wstawiania danych: {e}")
 
@@ -100,27 +99,29 @@ class FindPlate:
                 pos_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
                 gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                if prev_frame is not None and pos_frame % 5 == 0 and len(self.plates_to_find) != 0:
+                if prev_frame is not None and pos_frame % 120 == 0 and len(self.plates_to_find) != 0:
                     frame_diff = cv2.absdiff(gray_frame, prev_frame)
                     blurred_diff = cv2.GaussianBlur(frame_diff, (5, 5), 0)
                     _, binary_diff = cv2.threshold(blurred_diff, 25, 255, cv2.THRESH_BINARY)
                     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (10, 10))
                     processed_diff = cv2.morphologyEx(binary_diff, cv2.MORPH_OPEN, kernel)
                     motion_detected = np.sum(processed_diff) > 10000
+                    motion_detected = True
 
                     if motion_detected:
                         if not search_paused:
                             found = find_license_plate(frame)
+
                             for plate in self.plates_to_find:
                                 items_found = find_plate(plate, found)
                                 if items_found:
-                                    print(f"Znaleziono tablicę: {items_found[1]}")
+                                    print(f"Wykryto tablicę: {items_found[1]}")
                                     self.update_plates(items_found[1])
                                     self.plates_to_find = self.get_plates_to_find("0")
                                     self.plates_in_parking = self.get_plates_to_find("1")
                                     if self.lpc:
                                         self.lpc.send_license_plate(items_found[1])
-                                    search_paused = True
+                                    search_paused = False
                                     prev_motion_frame = gray_frame
                     else:
                         if prev_motion_frame is not None:
@@ -131,8 +132,8 @@ class FindPlate:
 
                 prev_frame = gray_frame
 
-                if processed_diff is not None:
-                    cv2.imshow("Processed Diff", processed_diff)
+                # if processed_diff is not None:
+                #     cv2.imshow("Processed Diff", processed_diff)
                 cv2.imshow("Frame", frame)
             else:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, pos_frame - 1)
@@ -150,6 +151,6 @@ licenseFinder = FindPlate(
     user='root',
     password='',
     db_name='wyciete_katalizatory',
-    video_source='./temp/wjazd.mp4'
+    video_source='https://192.168.0.108:8080/video'
 )
 licenseFinder.look_for_plates()

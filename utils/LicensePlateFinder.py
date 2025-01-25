@@ -76,21 +76,17 @@ def find_license_plate(img) -> dict:
     contours,_ = cv2.findContours(edges,cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     potential_plates = {}
     for contour in contours:
-        # Obliczenie prostokąta ograniczającego dla każdego konturu
         x, y, w, h = cv2.boundingRect(contour)
         aspect_ratio = w / float(h)
 
-        # Warunki wstępne dla tablic rejestracyjnych (np. proporcja szerokości do wysokości)
-        if 2 < aspect_ratio < 6 and 150 < w * h:  # Możesz dostosować warunki
-            # Wycięcie potencjalnego obszaru tablicy
+
+        if 2 < aspect_ratio < 6 and 150 < w * h:
             license_plate = gray_image[y:y + h, x:x + w]
 
-            # Opcjonalna korekcja perspektywy lub zmiana rozmiaru
             license_plate = cv2.resize(license_plate, (400, 100))
 
-            # 4. OCR na wyciętej tablicy
             pt.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-            text_reg = pt.image_to_string(license_plate, config='--psm 8')  # Tryb dla pojedynczej linii
+            text_reg = pt.image_to_string(license_plate, config='--psm 8')
             text_reg = re.sub(r'[^a-zA-Z0-9]','',text_reg)
             potential_plates[text_reg.upper()] = license_plate
     return potential_plates
@@ -100,32 +96,27 @@ def find_license_plate_test(img)->dict:
     if gray_image.dtype != np.uint8:
         gray_image = (gray_image * 255).astype(np.uint8)
 
-    # 1. Użycie progowania zamiast rozmycia i wykrywania krawędzi
     _, binary_image = cv2.threshold(gray_image, 120, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # 2. Znajdowanie konturów
     contours, _ = cv2.findContours(binary_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     potential_plates = {}
     pt.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
     for contour in contours:
-        # Obliczenie prostokąta ograniczającego dla każdego konturu
         x, y, w, h = cv2.boundingRect(contour)
         aspect_ratio = w / float(h)
 
-        # Warunki wstępne dla tablic rejestracyjnych
-        if 2 < aspect_ratio < 6 and 150 < w * h:  # Dostosuj te wartości w razie potrzeby
-            # Wycięcie potencjalnego obszaru tablicy
+
+        if 2 < aspect_ratio < 6 and 150 < w * h:
             license_plate = gray_image[y:y + h, x:x + w]
 
-            # Możliwe dalsze przekształcenia (np. rozmiar i normalizacja)
+
             license_plate = cv2.resize(license_plate, (400, 100))
 
-            # OCR na wyciętej tablicy (tylko gdy wstępne warunki są spełnione)
-            text_reg = pt.image_to_string(license_plate, config='--psm 8')  # Tryb dla pojedynczej linii
+            text_reg = pt.image_to_string(license_plate, config='--psm 8')
             text_reg = re.sub(r'[^a-zA-Z0-9]', '', text_reg)
-            if text_reg:  # Tylko jeśli wykryty tekst nie jest pusty
+            if text_reg:
                 potential_plates[text_reg.upper()] = license_plate
 
     return potential_plates
@@ -133,6 +124,8 @@ def find_license_plate_test(img)->dict:
 
 
 def find_plate(plate_name,found_plates):
+    # print(plate_name)
+    # print(found_plates.keys())
     if plate_name in found_plates.keys():
         return found_plates[plate_name],plate_name
 

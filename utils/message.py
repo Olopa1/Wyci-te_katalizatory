@@ -13,7 +13,7 @@ class LabelingClient:
         self.s = socket.socket()
         self.license_plate = ''
         self.running = True
-        self.lock = threading.Lock()  # Do synchronizacji dostępu do danych
+        self.lock = threading.Lock()
         self.listener_thread = threading.Thread(target=self._listen_to_socket)
         tries = 0
 
@@ -36,7 +36,7 @@ class LabelingClient:
                 if tries > 5:
                     raise Exception(f"Cannot connect to {ip}:{port} after 5 attempts")
 
-        # Uruchomienie wątku nasłuchującego
+
         self.listener_thread.start()
 
     def _listen_to_socket(self):
@@ -49,7 +49,7 @@ class LabelingClient:
                     self.s.send('give'.encode())
                     data = self.s.recv(1024).decode()
                     if data.lower() != 'wrong command given':
-                        with self.lock:  # Synchronizacja dostępu
+                        with self.lock:
                             self.license_plate = data
                 elif not data:
                     print("No data received, closing connection.")
@@ -64,7 +64,7 @@ class LabelingClient:
                 self.running = False
 
     def get_license_plate(self) -> str:
-        with self.lock:  # Synchronizacja dostępu
+        with self.lock:
             return self.license_plate
 
     def close_connection(self):
@@ -74,6 +74,26 @@ class LabelingClient:
             self.s.close()
         except OSError as e:
             print(f"Error closing connection: {e}")
+
+    @staticmethod
+    def update_parking_status(register_plate, is_on_parking):
+        try:
+            conn = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="",
+                database="wyciete_katalizatory"
+            )
+            cursor = conn.cursor()
+            sql = "UPDATE cars SET is_on_parking = %s WHERE register_plate = %s"
+            cursor.execute(sql, (is_on_parking, register_plate))
+            conn.commit()
+            print(f"Updated {register_plate} in database to is_on_parking = {is_on_parking}")
+        except mysql.connector.Error as err:
+            print(f"Error updating database: {err}")
+        finally:
+            cursor.close()
+            conn.close()
 
 
 # Funkcja do obliczania IoU (Intersection over Union)
@@ -91,18 +111,23 @@ def compute_iou(box1, box2):
     return iou
 
 
-# Klasa do śledzenia obiektów z poprawką
 # Klasa do śledzenia obiektów
 class Tracker:
-    def __init__(self, max_lost=10):
+    def __init__(self, max_lost=5):
         self.next_id = 1
         self.objects = {}
         self.lost_frames = {}
         self.max_lost = max_lost
         self.stationary_time = {}
+        self.license_plates = {}
+        self.last_received_license_plate = None
 
-    def update(self, detections):
+    def update(self, detections, new_license_plate=None):
         updated_objects = {}
+
+        if new_license_plate:
+            self.last_received_license_plate = new_license_plate
+
         for obj_id in self.objects.keys():
             self.lost_frames[obj_id] += 1
 
@@ -126,12 +151,22 @@ class Tracker:
                 else:
                     self.stationary_time[best_match] = 0
             else:
-                updated_objects[self.next_id] = detection
-                self.lost_frames[self.next_id] = 0
-                self.stationary_time[self.next_id] = 0
+                new_id = self.last_received_license_plate if self.last_received_license_plate else f"Unknown_{self.next_id}"
                 self.next_id += 1
+                updated_objects[new_id] = detection
+                self.lost_frames[new_id] = 0
+                self.stationary_time[new_id] = 0
+                self.license_plates[new_id] = self.last_received_license_plate or "Nieznana"
+
+        lost_cars = [k for k in self.objects.keys() if k not in updated_objects and self.lost_frames[k] > self.max_lost]
+
+        for lost_car in lost_cars:
+            if lost_car in self.license_plates and self.license_plates[lost_car] != "Nieznana":
+                LabelingClient.update_parking_status(self.license_plates[lost_car], 0)
 
         self.objects = {k: v for k, v in updated_objects.items() if self.lost_frames[k] <= self.max_lost}
+        self.license_plates = {k: self.license_plates[k] for k in self.objects.keys()}
+
         return self.objects
 
 
@@ -154,7 +189,6 @@ def crop_to_white_paper(image):
 def divide_into_grid(image, rows, cols):
     height, width, _ = image.shape
 
-    # Predefiniowane wysokości dla każdej sekcji
     row1_height = int(height // 2.75)
     row3_height = int(height // 2.75)
     row2_height = height - row1_height - row3_height
@@ -235,9 +269,6 @@ def is_car_parked_correctly(car_bbox, grid_cells, rows, cols):
 
 
 def merge_road_areas(grid_cells, rows, cols, image_shape):
-    """
-    Łączy wszystkie obszary oznaczone jako "droga" w jeden kontur.
-    """
     road_mask = np.zeros((image_shape[0], image_shape[1]), dtype=np.uint8)
 
     for cell, (x1, y1, x2, y2), is_road in grid_cells:
@@ -263,18 +294,20 @@ def check_parking_time(tracker, grid_cells, rows, cols):
         if stationary_time > 20 and not parking_status['parked_correctly']:
             print(f"Błąd parkowania: Samochód ID {obj_id} zaparkowany nieprawidłowo")
 
+
 # Funkcja przetwarzania wideo
 def process_video(video_source):
     cap = cv2.VideoCapture(video_source)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
 
-    # Załaduj przetrenowany model YOLOv5
+
     model = torch.hub.load('ultralytics/yolov5', 'custom',
                            path='C:/Users/milos/yolov5/runs/train/exp3(best)/weights/best.pt')
 
     tracker = Tracker()
+    register_car = LabelingClient("127.0.0.1", 33333)
 
-    register_car = LabelingClient("127.0.0.1",33333)
+    white_paper_coords = None
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -282,76 +315,80 @@ def process_video(video_source):
             print("Nie udało się pobrać obrazu ze źródła wideo.")
             break
 
-        # Obsługa białej kartki z rozszerzonymi metodami
-        try:
-            # Próba znalezienia białej kartki
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if white_paper_coords is None:
+            try:
+                # Próba znalezienia białej kartki
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            if contours:
-                largest_contour = max(contours, key=cv2.contourArea)
-                x, y, w, h = cv2.boundingRect(largest_contour)
-                cropped_frame = frame[y:y + h, x:x + w]
-            else:
-                cropped_frame = frame
+                if contours:
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    x, y, w, h = cv2.boundingRect(largest_contour)
+                    white_paper_coords = (x, y, w, h)
+                else:
+                    print("Nie znaleziono białej kartki, używanie pełnej klatki.")
+                    white_paper_coords = (0, 0, frame.shape[1], frame.shape[0])
+            except Exception as e:
+                print(f"Błąd podczas kadrowania białej kartki: {e}")
+                white_paper_coords = (0, 0, frame.shape[1], frame.shape[0])
 
 
-        except Exception as e:
-            print(f"Błąd podczas kadrowania białej kartki: {e}")
-            cropped_frame = frame.copy()
+        x, y, w, h = white_paper_coords
+        cropped_frame = frame[y:y + h, x:x + w]
 
 
-        # Po wygenerowaniu grid_cells
         rows, cols = 3, 5
         grid_cells = divide_into_grid(cropped_frame, rows, cols)
 
-        # Łączenie drogi w jeden kształt
+
         road_contour = merge_road_areas(grid_cells, rows, cols, cropped_frame.shape)
 
 
-        # Narysowanie połączonej drogi na obrazie
         if road_contour is not None:
             cv2.drawContours(cropped_frame, [road_contour], -1, (0, 255, 255), 2)  # Żółty kolor dla drogi
 
-        # Detekcja samochodów
+
         try:
             results = model(cropped_frame)
             detections = []
             for *xyxy, conf, cls in results.xyxy[0]:
-                if int(cls) == 0 and conf > 0.5:  # Klasa "car" z progiem pewności
+                if int(cls) == 0 and conf > 0.5:
                     x1, y1, x2, y2 = map(int, xyxy)
                     detections.append((x1, y1, x2, y2))
         except Exception as e:
             print(f"Błąd podczas detekcji samochodów: {e}")
             detections = []
 
-        tracked_objects = tracker.update(detections)
+
+        new_license_plate = register_car.get_license_plate()
+        if new_license_plate:
+            print(f"Odebrano tablicę rejestracyjną: {new_license_plate}")
 
 
+        tracked_objects = tracker.update(detections, new_license_plate)
 
-        # Wyświetlenie komórek siatki
+
         for idx, (cell, (x1, y1, x2, y2), is_road) in enumerate(grid_cells):
             row, col = divmod(idx, cols)
 
-            # Określenie koloru i etykiety
+
             if row == 0:
                 label = "Miejsce"
-                color = (255, 0, 0)  # Niebieski
+                color = (255, 0, 0)
             elif row == 2:
-                label = "Droga" if col < 2 else "Miejsce"  # Zmieniono z "Wjazd" na "Droga"
-                color = (0, 255, 0) if col < 2 else (255, 0, 0)  # Kolor zielony dla drogi
+                label = "Droga" if col < 2 else "Miejsce"
+                color = (0, 255, 0) if col < 2 else (255, 0, 0)
             elif is_road:
                 label = "Droga"
-                color = (0, 255, 0)  # Zielony
+                color = (0, 255, 0)
             else:
                 label = f"Cell {idx + 1}"
-                color = (255, 0, 0)  # Niebieski
+                color = (255, 0, 0)
 
-            # Rysowanie prostokąta i etykiety
             cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
 
-            # Tło pod tekstem dla lepszej widoczności
+
             text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
             text_x = x1 + 5
             text_y = y1 + 20
@@ -360,38 +397,21 @@ def process_video(video_source):
             cv2.putText(cropped_frame, label, (text_x, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        # Rysowanie i status samochodów
+
         for obj_id, bbox in tracked_objects.items():
             parking_status = is_car_parked_correctly(bbox, grid_cells, rows, cols)
             color = (0, 255, 0) if parking_status['parked_correctly'] else (0, 0, 255)
             status = "Poprawnie" if parking_status['parked_correctly'] else "Niepoprawnie"
 
-            # Pobranie tablicy rejestracyjnej z LabelingClient
-
-            license_plate = register_car.get_license_plate()
+            license_plate = tracker.license_plates.get(obj_id, "Nieznana")
 
             x1, y1, x2, y2 = bbox
             cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color,
-                        2)
 
-            #register_car.receive_license_plate()
-            #license_plate = register_car.get_license_plate() if 'register_car' in locals() else "Brak danych"
 
-            #x1, y1, x2, y2 = bbox
-            #cv2.rectangle(cropped_frame, (x1, y1), (x2, y2), color, 2)
-
-            # Wyświetlanie statusu i tablicy rejestracyjnej
-            #cv2.putText(cropped_frame, f"ID {obj_id}: {status}", (x1, y1 - 20),
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            #cv2.putText(cropped_frame, f"Tablica: {license_plate}", (x1, y1 - 5),
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-        # Sprawdzanie czasu postoju i wysyłanie komunikatów
         check_parking_time(tracker, grid_cells, rows, cols)
 
-        # Wyświetlanie wideo
         cv2.imshow("Cropped Frame with Grid and Cars", cropped_frame)
 
         if cv2.waitKey(1) & 0xFF == 27:  # ESC key
@@ -401,4 +421,5 @@ def process_video(video_source):
     cv2.destroyAllWindows()
 
 
-process_video("./temp/parking.mp4")
+
+process_video("https://192.168.0.107:8080/video")
