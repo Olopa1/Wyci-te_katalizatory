@@ -64,7 +64,9 @@ class LicensePlateClient:
 
 
 def open_gate():
-    pass
+    print("Open gate")
+    time.time(5)
+    print("Close gate")
 
 def find_license_plate(img) -> dict:
     gray_image = rgb2gray(img)

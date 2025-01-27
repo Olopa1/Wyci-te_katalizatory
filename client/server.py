@@ -1,6 +1,6 @@
 import socket
 import mysql.connector
-
+from utils.LicensePlateFinder import open_gate
 class LicenseScanning:
 
     def __init__(self, ip, port,db_info):
@@ -137,6 +137,7 @@ class LicenseScanning:
                 if self.waiting_for_plate() is True:
                     current_plate = self.get_current_license_plate()
                     print(f"Car with plate: {current_plate} entering the parking")
+                    open_gate()
                     print(f"Cars on parking: {self.on_parking}")
                     self.send_license_plate()
                     self.on_parking = self.get_plates_to_find("1")
